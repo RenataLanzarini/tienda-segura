@@ -1,0 +1,6 @@
+rules:
+  - id: javascript-no-eval
+    languages: [javascript]
+    severity: ERROR
+    message: No ejecutar entradas mediante eval; utilizar operaciones numéricas explícitas.
+    pattern: eval(...)

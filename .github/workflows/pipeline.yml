@@ -1,0 +1,120 @@
+name: Pipeline seguro
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+  audit:
+    name: Dependencias
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm audit --audit-level=high
+
+  sast:
+    name: Semgrep
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - run: docker run --rm -v "$PWD:/src:ro" semgrep/semgrep:1.185.0 semgrep scan --config /src/.semgrep.yml --error --metrics=off /src
+
+  secrets:
+    name: Gitleaks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+      - name: Escanear los archivos actuales
+        run: docker run --rm -v "$PWD:/src:ro" ghcr.io/gitleaks/gitleaks:v8.30.1 dir /src --redact --no-banner
+      - name: Escanear historial de la rama revisada
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ -n "$BASE" ] && [ -n "$HEAD" ]; then
+            docker run --rm -v "$PWD:/src:ro" ghcr.io/gitleaks/gitleaks:v8.30.1 git /src --redact --no-banner --log-opts="$BASE..$HEAD"
+          else
+            docker run --rm -v "$PWD:/src:ro" ghcr.io/gitleaks/gitleaks:v8.30.1 git /src --redact --no-banner
+          fi
+
+  trivy:
+    name: Trivy
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - run: docker run --rm -v "$PWD:/src:ro" aquasec/trivy:0.76.2 config --severity HIGH,CRITICAL --exit-code 1 /src
+
+  dast:
+    name: ZAP
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Construir y arrancar la aplicacion aislada
+        run: |
+          docker build -t tp4-app:ci .
+          docker network create --internal tp4-ci
+          docker run -d --name tp4-app --network tp4-ci tp4-app:ci
+          for i in $(seq 1 60); do
+            if [ "$(docker inspect --format '{{.State.Health.Status}}' tp4-app)" = healthy ]; then exit 0; fi
+            sleep 1
+          done
+          docker logs tp4-app
+          exit 1
+      - name: ZAP Baseline local (advertencias documentadas, FAIL bloquea)
+        run: |
+          mkdir -p "$RUNNER_TEMP/zap"
+          chmod 777 "$RUNNER_TEMP/zap"
+          docker run --rm --network tp4-ci -v "$RUNNER_TEMP/zap:/zap/wrk:rw" ghcr.io/zaproxy/zaproxy@sha256:9624669db72f54d86c4b46a7064518bd9bf79d8c61a4c31befa9923489f328af zap-baseline.py -t http://tp4-app:3004 -m 1 -T 3 -J report.json -r report.html -I
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        if: always()
+        with:
+          name: zap-baseline
+          path: ${{ runner.temp }}/zap/
+          retention-days: 14
+      - name: Detener recursos temporales del runner
+        if: always()
+        run: |
+          docker rm -f tp4-app || true
+          docker network rm tp4-ci || true
+
+  pipeline:
+    name: Pipeline
+    if: always()
+    needs: [tests, audit, sast, secrets, trivy, dast]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Exigir que todas las puertas aprueben
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: echo "$RESULTS" | jq -e 'all(.[]; .result == "success")'
