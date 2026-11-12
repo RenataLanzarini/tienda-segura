@@ -3,7 +3,7 @@
 const express = require('express');
 const helmet = require('helmet');
 
-const total = (precio, cant, desc) => precio * cant * (1 + desc);
+const total = (precio, cant, desc) => precio * cant * (1 - desc);
 
 const app = express();
 app.disable('x-powered-by');
