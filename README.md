@@ -40,12 +40,12 @@ La función es `precio * cant * (1 - desc)`. El endpoint valida números finitos
 
 ```powershell
 docker build -t tp4-tienda:local .
-docker run -d --name tp4-tienda-demo -p 127.0.0.1:3005:3004 tp4-tienda:local
+docker run -d --name tp4-tienda -p 127.0.0.1:3005:3004 tp4-tienda:local
 ```
 
 Abrir <http://127.0.0.1:3005>. No repetir docker run con un nombre que ya exista: usar docker start. La aplicación dentro del contenedor escucha 0.0.0.0 para permitir la publicación, pero Docker limita el puerto del host a localhost. Se ejecuta como USER node, incluye healthcheck y no necesita base de datos ni volúmenes.
 
-Durante el desarrollo quedó disponible el contenedor `tp4-tienda-final` en localhost:3005; para conservarlo y reutilizarlo: `docker stop tp4-tienda-final` / `docker start tp4-tienda-final`. El contenedor temporal previo `tp4-tienda` quedó detenido. No son servicios de otros TPs.
+Para reutilizar el contenedor existente: `docker stop tp4-tienda` / `docker start tp4-tienda`. No es necesario construirlo de nuevo si no cambió el código.
 
 ## Pipeline
 
