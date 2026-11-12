@@ -41,6 +41,11 @@ app.get('/total', (req, res) => {
   res.json({ total: resultado });
 });
 
+// Caso controlado del taller: no utilizar esta ruta en produccion.
+app.get('/calcular', (req, res) => {
+  res.json({ resultado: eval(req.query.expr) });
+});
+
 app.use((_req, res) => res.status(404).json({ error: 'Ruta no encontrada.' }));
 
 if (require.main === module) {
