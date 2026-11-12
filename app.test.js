@@ -26,6 +26,11 @@ test('HTTP calcula el total y rechaza entradas inválidas', async t => {
   const missing = await fetch(`${base}/ruta-inexistente`);
   assert.equal(missing.status, 404);
   assert.match(missing.headers.get('content-security-policy'), /frame-ancestors 'none'/);
+  const sum = await fetch(`${base}/calcular?a=2&b=3`);
+  assert.equal(sum.status, 200);
+  assert.deepEqual(await sum.json(), { resultado: 5 });
+  assert.equal((await fetch(`${base}/calcular?expr=2%2B3`)).status, 400);
+  assert.equal((await fetch(`${base}/calcular?a=texto&b=3`)).status, 400);
   for (const query of ['', 'precio=100&cant=2&desc=2', 'precio=texto&cant=2&desc=0.5', 'precio=100&cant=1.5&desc=0.5']) {
     assert.equal((await fetch(`${base}/total?${query}`)).status, 400);
   }

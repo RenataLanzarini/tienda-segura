@@ -41,6 +41,19 @@ app.get('/total', (req, res) => {
   res.json({ total: resultado });
 });
 
+// Solo suma de operandos numericos: nunca se interpreta texto como codigo.
+app.get('/calcular', (req, res) => {
+  const operands = ['a', 'b'].map(key => {
+    const value = req.query[key];
+    return typeof value === 'string' && value.trim() !== '' ? Number(value) : NaN;
+  });
+  const resultado = operands[0] + operands[1];
+  if (!operands.every(Number.isFinite) || !Number.isFinite(resultado)) {
+    return res.status(400).json({ error: 'Se requieren dos numeros finitos: a y b.' });
+  }
+  res.json({ resultado });
+});
+
 app.use((_req, res) => res.status(404).json({ error: 'Ruta no encontrada.' }));
 
 if (require.main === module) {
